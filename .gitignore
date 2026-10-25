@@ -1,0 +1,51 @@
+# Large data (never push)
+raw/
+processed/
+temp/
+tiles/
+*.tif
+*.tiff
+*.TIF
+*.zip
+*.SAFE/
+*.safe
+*.npy
+*.gpkg
+downloads/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Model & logs
+*.pth
+*.pt
+*.h5
+*.ckpt
+runs/
+logs/
+wandb/
+mlruns/
+
+# Misc
+*.log
