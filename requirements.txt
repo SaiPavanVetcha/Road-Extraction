@@ -13,3 +13,4 @@ torchvision
 segmentation-models-pytorch
 albumentations
 scikit-learn
+dotenv
