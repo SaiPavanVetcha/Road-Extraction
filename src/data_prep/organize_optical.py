@@ -1,7 +1,7 @@
-import os
+import argparse
+import shutil
 import sys
 import zipfile
-import shutil
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -31,29 +31,36 @@ OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 
-def organize():
-    zip_files = list(Path(ZIP_FOLDER).glob("*.zip"))
+
+def organize(force=False):
+    zip_files = sorted(list(Path(ZIP_FOLDER).glob("*.zip")))
     print(f"Found {len(zip_files)} zip files\n")
 
     for zip_path in zip_files:
         # Get clean name without .zip
-        folder_name = zip_path.stem   # e.g. 2025-11-17_Amaravati
+        folder_name = zip_path.stem  # e.g. 2025-11-17_Amaravati
 
         print(f"Processing: {folder_name}")
 
-        # Temporary extract location
+        final_path = Path(OUTPUT_FOLDER) / folder_name
         temp_dir = Path(ZIP_FOLDER) / f"temp_{folder_name}"
-        temp_dir.mkdir(exist_ok=True)
+
+        # Remove any stale temp_* folder before extracting
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        if not force and final_path.exists() and list(final_path.glob("BAND*.tif")):
+            print(f"  [Skipped] {folder_name}: already organized (use --force to rebuild)\n")
+            continue
+
+        temp_dir.mkdir(parents=True, exist_ok=True)
 
         # Extract
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(temp_dir)
 
         # Find the actual data folder inside (usually one main folder)
         extracted_items = list(temp_dir.iterdir())
-        
-        # Final destination
-        final_path = Path(OUTPUT_FOLDER) / folder_name
 
         if final_path.exists():
             shutil.rmtree(final_path)
@@ -62,8 +69,7 @@ def organize():
         if len(extracted_items) == 1 and extracted_items[0].is_dir():
             shutil.move(str(extracted_items[0]), str(final_path))
         else:
-            # Move everything
-            final_path.mkdir(exist_ok=True)
+            final_path.mkdir(parents=True, exist_ok=True)
             for item in extracted_items:
                 shutil.move(str(item), str(final_path / item.name))
 
@@ -74,5 +80,19 @@ def organize():
 
     print("=== All done ===")
 
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Organize downloaded optical zip files into raw directories."
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-extraction and overwrite existing organized scenes.",
+    )
+    args = parser.parse_args()
+    organize(force=args.force)
+
+
 if __name__ == "__main__":
-    organize()
+    main()

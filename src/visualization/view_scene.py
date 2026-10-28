@@ -1,5 +1,7 @@
+import argparse
 import sys
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
@@ -16,79 +18,75 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from configs.paths import PROCESSED_DIR, PROCESSED_SCENES_DIR
+from configs.paths import PREVIEWS_DIR, PROCESSED_SCENES_DIR
+from src.utils.viz import process_sar_channel, robust_stretch
 
-# ============================================================
-SCENE_ID = "2025-11-25_Amaravati"
-DOWNSAMPLE_FACTOR = 4  # Downsample x4 for safe rendering (~1787x1937)
-OVERWRITE_EXISTING = False  # Set to True if you want to force re-rendering
-
-# Previews Directory
-PREVIEWS_DIR = PROCESSED_DIR / "previews"
 PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
-# ============================================================
 
-SCENE_DIR = PROCESSED_SCENES_DIR / SCENE_ID
-OPTICAL_PATH = SCENE_DIR / "optical_24m.tif"
-SAR_PATHS = sorted(list(SCENE_DIR.glob("sar_*_24m.tif")))
-
-
-def robust_stretch(band, lower=2, upper=98):
-    """Normalizes array between 0.0 and 1.0 float32 using percentiles."""
-    band = band.astype(np.float32)
-    valid = band[np.isfinite(band) & (band > 0)]
-    if valid.size < 100:
-        return np.zeros_like(band, dtype=np.float32)
-    p_low, p_high = np.percentile(valid, (lower, upper))
-    return np.clip((band - p_low) / (p_high - p_low + 1e-6), 0, 1).astype(
-        np.float32
-    )
-
-
-def process_sar_channel(sar_arr):
-    """Ensures SAR channel is in proper dB scale and normalizes for display."""
-    sar_arr = sar_arr.astype(np.float32)
-    valid_mask = sar_arr > -9990
-
-    if not np.any(valid_mask):
-        return np.zeros_like(sar_arr, dtype=np.float32)
-
-    if np.max(sar_arr[valid_mask]) > 5.0:
-        sar_arr[valid_mask] = 10.0 * np.log10(
-            np.maximum(sar_arr[valid_mask], 1e-6)
-        )
-
-    valid_vals = sar_arr[valid_mask]
-    p2, p98 = np.percentile(valid_vals, (2, 98))
-    sar_norm = np.clip((sar_arr - p2) / (p98 - p2 + 1e-6), 0, 1)
-    sar_norm[~valid_mask] = 0
-    return sar_norm.astype(np.float32)
 
 def main():
-    out_preview = PREVIEWS_DIR / f"{SCENE_ID}_preview.png"
+    parser = argparse.ArgumentParser(
+        description="Visualize optical false-color and SAR channels for a scene."
+    )
+    parser.add_argument(
+        "scene_id",
+        nargs="?",
+        default=None,
+        help="Scene ID to visualize (default: first available in data/processed/scenes)",
+    )
+    parser.add_argument(
+        "--downsample",
+        type=int,
+        default=4,
+        help="Downsample factor for rendering (default: 4)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-rendering even if cached preview exists",
+    )
+    args = parser.parse_args()
 
-    # If preview already exists, load and display it directly without re-reading rasters
-    if out_preview.exists() and not OVERWRITE_EXISTING:
+    scene_id = args.scene_id
+    if scene_id is None:
+        available_scenes = (
+            sorted([d.name for d in PROCESSED_SCENES_DIR.iterdir() if d.is_dir()])
+            if PROCESSED_SCENES_DIR.exists()
+            else []
+        )
+        if not available_scenes:
+            print(f"No processed scenes found in {PROCESSED_SCENES_DIR}")
+            return
+        scene_id = available_scenes[0]
+        print(f"No scene specified; defaulting to: {scene_id}")
+
+    scene_dir = PROCESSED_SCENES_DIR / scene_id
+    optical_path = scene_dir / "optical_24m.tif"
+    sar_paths = sorted(list(scene_dir.glob("sar_*_24m.tif")))
+
+    out_preview = PREVIEWS_DIR / f"{scene_id}_preview.png"
+
+    # If preview already exists and not forced, display cached
+    if out_preview.exists() and not args.force:
         print(f"✓ Cached preview found at → {out_preview}")
         print("  Displaying existing preview window...\n")
-
-        # Read saved PNG image and display
         img = plt.imread(out_preview)
         fig, ax = plt.subplots(figsize=(16, 5))
         ax.imshow(img)
         ax.axis("off")
-        ax.set_title(f"Cached Scene Preview: {SCENE_ID}", fontsize=12)
+        ax.set_title(f"Cached Scene Preview: {scene_id}", fontsize=12)
         plt.tight_layout()
         plt.show()
         return
 
-    print(f"=== Loading Scene: {SCENE_ID} ===")
-    if not OPTICAL_PATH.exists():
-        raise FileNotFoundError(f"Optical file not found: {OPTICAL_PATH}")
+    print(f"=== Loading Scene: {scene_id} ===")
+    if not optical_path.exists():
+        raise FileNotFoundError(f"Optical file not found: {optical_path}")
 
     # 1. Read Optical with Downsampling
-    with rasterio.open(OPTICAL_PATH) as src:
-        out_h, out_w = src.height // DOWNSAMPLE_FACTOR, src.width // DOWNSAMPLE_FACTOR
+    downsample = max(1, args.downsample)
+    with rasterio.open(optical_path) as src:
+        out_h, out_w = src.height // downsample, src.width // downsample
         print(f"Original Shape   : {src.shape}")
         print(f"Downsampled Shape: ({out_h}, {out_w})")
 
@@ -102,13 +100,13 @@ def main():
     ).astype(np.float32)
 
     # 2. Read SAR Files with Downsampling
-    if not SAR_PATHS:
-        raise FileNotFoundError(f"No SAR files found in {SCENE_DIR}")
+    if not sar_paths:
+        raise FileNotFoundError(f"No SAR files found in {scene_dir}")
 
-    print(f"\nFound {len(SAR_PATHS)} SAR file(s) for visualization")
+    print(f"\nFound {len(sar_paths)} SAR file(s) for visualization")
 
     sar_data = []
-    for sar_path in SAR_PATHS:
+    for sar_path in sar_paths:
         print(f"Loading SAR: {sar_path.name}")
         with rasterio.open(sar_path) as src:
             vv = src.read(1, out_shape=(out_h, out_w))
@@ -134,7 +132,7 @@ def main():
 
     # Plot Optical False-Color
     axes[0].imshow(rgb)
-    axes[0].set_title(f"{SCENE_ID}\nOptical (NIR-R-G)", fontsize=10)
+    axes[0].set_title(f"{scene_id}\nOptical (NIR-R-G)", fontsize=10)
     axes[0].axis("off")
 
     # Plot SAR VV and VH
@@ -150,7 +148,7 @@ def main():
         axes[col_idx].axis("off")
         col_idx += 1
 
-    # Save to dedicated previews directory
+    # Save to previews directory
     plt.tight_layout()
     plt.savefig(out_preview, dpi=150, bbox_inches="tight")
     print(f"\n✓ Saved preview to → {out_preview}")

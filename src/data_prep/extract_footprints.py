@@ -1,13 +1,11 @@
-import os
+import re
 import sys
-import glob
-import json
+from pathlib import Path
+import geopandas as gpd
+import pandas as pd
 import rasterio
 from rasterio.warp import transform_bounds
-from shapely.geometry import box, mapping
-import geopandas as gpd
-from pathlib import Path
-import pandas as pd
+from shapely.geometry import box
 
 if sys.platform == "win32":
     try:
@@ -21,13 +19,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from configs.paths import RAW_OPTICAL_DIR, FOOTPRINTS_GEOJSON, FOOTPRINTS_CSV
+from configs.paths import FOOTPRINTS_CSV, FOOTPRINTS_GEOJSON, RAW_OPTICAL_DIR
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-OPTICAL_ROOT = RAW_OPTICAL_DIR          # folder containing all optical scenes
+OPTICAL_ROOT = RAW_OPTICAL_DIR  # folder containing all optical scenes
 OUTPUT_GEOJSON = FOOTPRINTS_GEOJSON
 OUTPUT_CSV = FOOTPRINTS_CSV
 
@@ -35,17 +33,21 @@ OUTPUT_GEOJSON.parent.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 
+
 def get_footprint(tif_path):
     """Extract footprint in WGS84 (EPSG:4326)"""
     with rasterio.open(tif_path) as src:
-        # Get bounds in native CRS
         bounds = src.bounds
         crs = src.crs
 
         # Transform to WGS84
         left, bottom, right, top = transform_bounds(
-            crs, "EPSG:4326",
-            bounds.left, bounds.bottom, bounds.right, bounds.top
+            crs,
+            "EPSG:4326",
+            bounds.left,
+            bounds.bottom,
+            bounds.right,
+            bounds.top,
         )
 
         polygon = box(left, bottom, right, top)
@@ -57,26 +59,41 @@ def get_footprint(tif_path):
             "width_deg": right - left,
             "height_deg": top - bottom,
             "crs_original": str(crs),
-            "shape": src.shape
+            "shape": src.shape,
         }
+
 
 def main():
     records = []
     geometries = []
 
     # Find all optical folders
-    folders = sorted([f for f in Path(OPTICAL_ROOT).iterdir() if f.is_dir()])
+    folders = (
+        sorted([f for f in Path(OPTICAL_ROOT).iterdir() if f.is_dir()])
+        if Path(OPTICAL_ROOT).exists()
+        else []
+    )
     print(f"Found {len(folders)} optical scenes\n")
 
     for folder in folders:
-        # Look for any band (prefer BAND2 or BAND3)
-        band_candidates = list(folder.glob("BAND*.tif")) + list(folder.glob("*.tif"))
-        
-        if not band_candidates:
-            print(f"⚠ No .tif found in {folder.name}")
+        # Validate folder name format
+        if not re.match(r"^\d{4}-\d{2}-\d{2}_.+", folder.name):
+            print(
+                f"⚠️ Skipping '{folder.name}': folder name does not match expected format 'YYYY-MM-DD_Location'"
+            )
             continue
 
-        tif_path = band_candidates[0]
+        # Pick the first file matching BAND*.tif only (sorted); fall back to any .tif
+        band_matches = sorted(list(folder.glob("BAND*.tif")))
+        if band_matches:
+            tif_path = band_matches[0]
+        else:
+            all_tifs = sorted(list(folder.glob("*.tif")))
+            if not all_tifs:
+                print(f"⚠ No .tif found in {folder.name}")
+                continue
+            tif_path = all_tifs[0]
+
         print(f"Processing: {folder.name}")
 
         try:
@@ -86,12 +103,14 @@ def main():
                 "scene_id": folder.name,
                 "date": folder.name[:10],
                 "location": "_".join(folder.name.split("_")[1:]),
-                **info
+                **info,
             }
             records.append(record)
             geometries.append(polygon)
 
-            print(f"  → Bounds: {info['left']:.4f}, {info['bottom']:.4f}, {info['right']:.4f}, {info['top']:.4f}")
+            print(
+                f"  → Bounds: {info['left']:.4f}, {info['bottom']:.4f}, {info['right']:.4f}, {info['top']:.4f}"
+            )
 
         except Exception as e:
             print(f"  ✗ Error: {e}")
@@ -108,6 +127,7 @@ def main():
 
     print("\n=== Footprint extraction completed ===")
     print(f"Total scenes processed: {len(records)}")
+
 
 if __name__ == "__main__":
     main()

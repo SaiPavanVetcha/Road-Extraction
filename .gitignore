@@ -3,14 +3,12 @@ data/
 raw/
 processed/
 temp/
-tiles/
 *.tif
 *.tiff
 *.TIF
 *.zip
 *.SAFE/
 *.safe
-*.npy
 *.gpkg
 *.osm.pbf
 *.pbf

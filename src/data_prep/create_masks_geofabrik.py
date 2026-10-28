@@ -1,9 +1,7 @@
-import os
 import sys
 from pathlib import Path
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import rasterio
 from rasterio import features
 from pyrosm import OSM
@@ -21,7 +19,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from configs.paths import PROCESSED_SCENES_DIR, MASK_DIR, QUALITY_CSV, PBF_PATH
+from configs.paths import PROCESSED_SCENES_DIR, MASK_DIR, PBF_PATH
+from configs.settings import MIN_VALID_PCT
 
 # ============================================================
 # CONFIGURATION
@@ -30,7 +29,10 @@ PROCESSED_ROOT = PROCESSED_SCENES_DIR
 MASK_ROOT = MASK_DIR
 MASK_ROOT.mkdir(parents=True, exist_ok=True)
 
-MIN_VALID_PCT = 50.0  # Quality threshold percentage
+# Shared threshold reference
+MIN_VALID_THRESHOLD = MIN_VALID_PCT
+
+INCLUDE_TRACKS = True
 
 # Realistic class design for 24m spatial resolution
 ROAD_CLASS_MAP = {
@@ -49,6 +51,8 @@ ROAD_CLASS_MAP = {
     "service": 1,
     "living_street": 1,
 }
+if INCLUDE_TRACKS:
+    ROAD_CLASS_MAP["track"] = 1
 
 CLASS_BUFFER = {
     1: 11.0,  # Local (~22m physical width = ~1 pixel)
@@ -56,7 +60,7 @@ CLASS_BUFFER = {
     3: 26.0,  # Major (~52m physical width = 2+ pixels)
 }
 
-MIN_ROAD_LENGTH_M = 30.0  # Ignore vector noise shorter than 30 meters
+MIN_ROAD_LENGTH_M = 5.0  # Ignore vector noise shorter than 5 meters
 # ============================================================
 
 
@@ -66,26 +70,23 @@ def assign_class(tag):
         return 0
     if isinstance(tag, list):
         tag = tag[0]
-    if isinstance(tag, str) and "," in tag:
-        tag = tag.split(",")[0].strip()
+    if isinstance(tag, str) and ";" in tag:
+        tag = tag.split(";")[0].strip()
     return ROAD_CLASS_MAP.get(str(tag).lower(), 0)
 
 
 def get_selected_scenes():
-    """Reads quality report CSV and returns scene IDs meeting quality threshold."""
-    if not QUALITY_CSV.exists():
-        raise FileNotFoundError(
-            f"{QUALITY_CSV} not found. Please run quality_check.py first."
-        )
+    """Returns scene IDs where optical_24m.tif exists."""
+    if not PROCESSED_ROOT.exists():
+        return []
 
-    df = pd.read_csv(QUALITY_CSV)
+    selected = [
+        d.name
+        for d in sorted(PROCESSED_ROOT.iterdir())
+        if d.is_dir() and (d / "optical_24m.tif").exists()
+    ]
 
-    selected = df[
-        (df["sar1_valid_pct"] >= MIN_VALID_PCT)
-        & (df["sar2_valid_pct"] >= MIN_VALID_PCT)
-    ]["scene_id"].tolist()
-
-    print(f"Selected {len(selected)} scenes with >= {MIN_VALID_PCT}% valid overlap:")
+    print(f"Selected {len(selected)} scenes with valid optical raster:")
     for s in selected:
         print(f"  ✓ {s}")
     print()
@@ -160,7 +161,8 @@ def create_mask_from_pbf(scene_id):
             )
 
     # Save multi-class mask file
-    meta.update({"count": 1, "dtype": "uint8", "nodata": 0})
+    meta.update({"count": 1, "dtype": "uint8"})
+    meta.pop("nodata", None)
     out_path = MASK_ROOT / f"mask_{scene_id}.tif"
     with rasterio.open(out_path, "w", **meta) as dst:
         dst.write(mask, 1)

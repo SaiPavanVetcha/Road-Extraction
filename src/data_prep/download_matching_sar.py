@@ -58,9 +58,25 @@ def get_overlap_ratio(poly1, poly2):
     return inter / poly1.area
 
 
-def process_and_collect_products(gdf):
-    """Searches and groups missing SAR products by output directory."""
-    download_queue = []
+def parse_product_date(product):
+    """Extract datetime from ASF product start time property."""
+    start_time_str = product.properties.get("startTime")
+    if start_time_str:
+        try:
+            return datetime.strptime(str(start_time_str)[:10], "%Y-%m-%d")
+        except Exception:
+            pass
+    return None
+
+
+def collect_products_across_scenes(gdf):
+    """
+    Searches SAR candidates for each optical footprint, ranks them by
+    overlap descending and date proximity, de-duplicates by fileID across
+    scenes, and groups queued downloads by output directory.
+    """
+    products_by_dir = {}
+    file_locations = {}
 
     for idx, row in gdf.iterrows():
         scene_id = row["scene_id"]
@@ -82,6 +98,8 @@ def process_and_collect_products(gdf):
             results = asf.geo_search(
                 platform=[asf.PLATFORM.SENTINEL1],
                 processingLevel=[asf.PRODUCT_TYPE.GRD_HD],
+                beamMode=asf.BEAMMODE.IW,
+                polarization=[asf.POLARIZATION.VV_VH],
                 intersectsWith=opt_poly.convex_hull.wkt,
                 start=start,
                 end=end,
@@ -99,11 +117,18 @@ def process_and_collect_products(gdf):
                 sar_poly = shape(r.geometry)
                 overlap = get_overlap_ratio(opt_poly, sar_poly)
                 if overlap >= MIN_OVERLAP_RATIO:
-                    scored.append((overlap, r))
+                    sar_date = parse_product_date(r)
+                    date_diff = (
+                        abs((sar_date - opt_date).days)
+                        if sar_date
+                        else 999999
+                    )
+                    scored.append((overlap, date_diff, r))
             except Exception:
                 continue
 
-        scored.sort(key=lambda x: x[0], reverse=True)
+        # Rank candidates by overlap descending, then smallest abs date difference
+        scored.sort(key=lambda x: (-x[0], x[1]))
         selected = scored[:MAX_SAR_PER_OPTICAL]
 
         if not selected:
@@ -113,20 +138,38 @@ def process_and_collect_products(gdf):
         out_dir = OUTPUT_ROOT / str(scene_id)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        for overlap, product in selected:
+        for overlap, date_diff, product in selected:
             file_name = product.properties.get("fileName")
+            file_id = product.properties.get("fileID")
             expected_file = out_dir / file_name if file_name else None
 
-            # Skip files that already exist locally
+            # Skip files that already exist locally in this scene's directory
             if expected_file and expected_file.exists():
                 print(f"  [Skipped] Already downloaded: {file_name}")
-            else:
-                print(
-                    f"  [Queued] Overlap: {overlap:.1%} | {product.properties.get('fileID')}"
-                )
-                download_queue.append((product, out_dir))
+                file_locations[file_id] = expected_file
+                continue
 
-    return download_queue
+            # Check if product is already downloaded or queued in another scene
+            if file_id in file_locations:
+                shared_src = file_locations[file_id]
+                links_path = out_dir / "links.txt"
+                with open(links_path, "a", encoding="utf-8") as lf:
+                    lf.write(f"{file_id}\t{file_name}\t{shared_src}\n")
+                print(
+                    f"  [Shared] Product {file_id} already in {shared_src.parent.name} → linked in links.txt"
+                )
+                continue
+
+            # Queue new product for download
+            print(
+                f"  [Queued] Overlap: {overlap:.1%}, Date Diff: {date_diff}d | {file_id}"
+            )
+            file_locations[file_id] = expected_file
+            if out_dir not in products_by_dir:
+                products_by_dir[out_dir] = []
+            products_by_dir[out_dir].append(product)
+
+    return products_by_dir
 
 
 def main():
@@ -145,31 +188,34 @@ def main():
         print(f"Authentication error: {e}")
         return
 
-    # Collect missing products
+    # Collect missing products across all scenes
     print("\nQueuing scenes for download...")
-    download_queue = process_and_collect_products(gdf)
+    products_by_dir = collect_products_across_scenes(gdf)
 
-    if not download_queue:
-        print("\nAll target files are already downloaded!")
+    total_queued = sum(len(prods) for prods in products_by_dir.values())
+    if total_queued == 0:
+        print("\nAll target files are already downloaded or shared!")
         return
 
     print(
-        f"\nStarting parallel downloads for {len(download_queue)} items using {MAX_CONCURRENT_DOWNLOADS} workers..."
+        f"\nStarting downloads for {total_queued} items across {len(products_by_dir)} directories using {MAX_CONCURRENT_DOWNLOADS} workers per directory..."
     )
 
-    # Execute downloads with multi-process speed
-    for product, out_dir in download_queue:
+    # Execute downloads per directory in batch
+    for out_dir, products in products_by_dir.items():
         try:
-            # Packaging single product into ASFSearchResults unlocks the native parallel downloader
-            search_container = asf.ASFSearchResults([product])
-            search_container.download(
-                path=str(out_dir), session=session, processes=MAX_CONCURRENT_DOWNLOADS
-            )
-            print(f"  ✓ Download completed: {product.properties.get('fileID')}")
-        except Exception as e:
             print(
-                f"  ❌ Download failed for {product.properties.get('fileID')}: {e}"
+                f"\nDownloading {len(products)} products to {out_dir.name}..."
             )
+            search_container = asf.ASFSearchResults(products)
+            search_container.download(
+                path=str(out_dir),
+                session=session,
+                processes=MAX_CONCURRENT_DOWNLOADS,
+            )
+            print(f"  ✓ Finished downloading to {out_dir.name}")
+        except Exception as e:
+            print(f"  ❌ Download failed for directory {out_dir.name}: {e}")
 
     print("\n" + "=" * 60)
     print("=== All SAR download tasks finished ===")
