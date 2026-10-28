@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 import geopandas as gpd
 import numpy as np
@@ -8,18 +9,28 @@ from rasterio import features
 from pyrosm import OSM
 from shapely.geometry import box
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import PROCESSED_SCENES_DIR, MASK_DIR, QUALITY_CSV, PBF_PATH
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
-PROCESSED_ROOT = Path("processed")
-MASK_ROOT = Path("processed/masks")
+PROCESSED_ROOT = PROCESSED_SCENES_DIR
+MASK_ROOT = MASK_DIR
 MASK_ROOT.mkdir(parents=True, exist_ok=True)
 
-QUALITY_CSV = Path("processed/quality_report.csv")
 MIN_VALID_PCT = 50.0  # Quality threshold percentage
-
-# Path to downloaded Geofabrik PBF
-PBF_PATH = Path("raw/vectors/south-india-latest.osm.pbf")
 
 # Realistic class design for 24m spatial resolution
 ROAD_CLASS_MAP = {
@@ -168,7 +179,7 @@ def main():
     if not PBF_PATH.exists():
         raise FileNotFoundError(
             f"Geofabrik extract missing at {PBF_PATH}.\n"
-            f"Please download south-india-latest.osm.pbf into raw/vectors/"
+            f"Please download south-india-latest.osm.pbf into data/raw/vectors/"
         )
 
     selected_scenes = get_selected_scenes()

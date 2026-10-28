@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import json
 import rasterio
@@ -8,15 +9,29 @@ import geopandas as gpd
 from pathlib import Path
 import pandas as pd
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import RAW_OPTICAL_DIR, FOOTPRINTS_GEOJSON, FOOTPRINTS_CSV
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-OPTICAL_ROOT = "raw/optical"          # folder containing all optical scenes
-OUTPUT_GEOJSON = "processed/footprints.geojson"
-OUTPUT_CSV = "processed/footprints_summary.csv"
+OPTICAL_ROOT = RAW_OPTICAL_DIR          # folder containing all optical scenes
+OUTPUT_GEOJSON = FOOTPRINTS_GEOJSON
+OUTPUT_CSV = FOOTPRINTS_CSV
 
-os.makedirs("processed", exist_ok=True)
+OUTPUT_GEOJSON.parent.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 

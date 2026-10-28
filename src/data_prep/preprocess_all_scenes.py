@@ -1,22 +1,37 @@
 import os
+import sys
 from pathlib import Path
 import numpy as np
 import rasterio
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import RAW_OPTICAL_DIR, RAW_SAR_DIR, PROCESSED_SCENES_DIR
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-OPTICAL_ROOT   = Path("raw/optical")
-SAR_ROOT       = Path("raw/sar")
-PROCESSED_ROOT = Path("processed")
-PROCESSED_ROOT.mkdir(exist_ok=True)
+OPTICAL_ROOT   = RAW_OPTICAL_DIR
+SAR_ROOT       = RAW_SAR_DIR
+PROCESSED_ROOT = PROCESSED_SCENES_DIR
+PROCESSED_ROOT.mkdir(parents=True, exist_ok=True)
 
 TARGET_RES = 24.0
 
 # Dynamically find all scene directories inside raw/optical
-SCENE_IDS = sorted([f.name for f in OPTICAL_ROOT.iterdir() if f.is_dir()])
+SCENE_IDS = sorted([f.name for f in OPTICAL_ROOT.iterdir() if f.is_dir()]) if OPTICAL_ROOT.exists() else []
 
 # ============================================================
 

@@ -1,4 +1,5 @@
 # Large data (never push)
+data/
 raw/
 processed/
 temp/
@@ -11,6 +12,8 @@ tiles/
 *.safe
 *.npy
 *.gpkg
+*.osm.pbf
+*.pbf
 downloads/
 
 # Python

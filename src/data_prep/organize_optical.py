@@ -1,20 +1,32 @@
 import os
+import sys
 import zipfile
 import shutil
 from pathlib import Path
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import DOWNLOADS_DIR, RAW_OPTICAL_DIR
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-BASE_DIR = Path(__file__).resolve().parent
-
 # Folder where all the .zip files are currently present
-ZIP_FOLDER = BASE_DIR / "downloads"
+ZIP_FOLDER = DOWNLOADS_DIR
 
 # Final destination
-OUTPUT_FOLDER = BASE_DIR / "raw" / "optical"
-
+OUTPUT_FOLDER = RAW_OPTICAL_DIR
 OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # ============================================================

@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -7,12 +8,26 @@ import geopandas as gpd
 from dotenv import load_dotenv
 from shapely.geometry import shape
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import FOOTPRINTS_GEOJSON, RAW_SAR_DIR
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-FOOTPRINTS_FILE = "processed/footprints.geojson"
-OUTPUT_ROOT = Path("raw/sar")
+FOOTPRINTS_FILE = FOOTPRINTS_GEOJSON
+OUTPUT_ROOT = RAW_SAR_DIR
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
 # Search window around optical date

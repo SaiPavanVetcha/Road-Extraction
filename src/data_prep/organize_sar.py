@@ -1,18 +1,33 @@
 import os
+import sys
 import shutil
 import zipfile
 from pathlib import Path
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import RAW_SAR_DIR
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-SAR_ROOT = Path("raw/sar").resolve()  # Get full absolute path
+SAR_ROOT = RAW_SAR_DIR.resolve()  # Get full absolute path
 # ============================================================
 
 
 def get_windows_long_path(path: Path) -> Path:
-    """Prepends \\?\ to Windows absolute paths to bypass the 260-character MAX_PATH limit."""
+    r"""Prepends \\?\ to Windows absolute paths to bypass the 260-character MAX_PATH limit."""
     abs_str = str(path.resolve())
     if os.name == "nt" and not abs_str.startswith("\\\\?\\"):
         return Path(f"\\\\?\\{abs_str}")

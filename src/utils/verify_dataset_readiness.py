@@ -1,12 +1,28 @@
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import rasterio
 
+# Handle Windows console encoding for Unicode checkmarks and symbols
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from configs.paths import PROCESSED_SCENES_DIR, MASK_DIR, QUALITY_CSV
+
 # ============================================================
-PROCESSED_ROOT = Path("processed")
-MASK_ROOT = Path("processed/masks")
-QUALITY_CSV = Path("processed/quality_report.csv")
+PROCESSED_ROOT = PROCESSED_SCENES_DIR
+MASK_ROOT = MASK_DIR
+QUALITY_CSV = QUALITY_CSV
 # ============================================================
 
 
@@ -116,8 +132,12 @@ def main():
     print("DATASET PREPARATION READINESS REPORT")
     print("=" * 80)
     for _, row in df_res.iterrows():
-        icon = "✓" if row["status"] == "READY" else "❌"
-        print(f"{icon} Scene: {row['scene_id']}")
+        try:
+            icon = "✓" if row["status"] == "READY" else "❌"
+            print(f"{icon} Scene: {row['scene_id']}")
+        except UnicodeEncodeError:
+            icon = "[READY]" if row["status"] == "READY" else "[FAILED]"
+            print(f"{icon} Scene: {row['scene_id']}")
         print(f"   Shape: {row['total_pixels']} | Optical Bands: {row['optical_bands']} | SAR Rasters: {row['sar_files']}")
         print(f"   Classes Present: {row['classes_found']} | Total Road Pixels: {row['total_road_px']:,}")
         print(f"   Issues: {row['issues']}\n")
