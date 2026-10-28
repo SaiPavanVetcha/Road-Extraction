@@ -20,3 +20,5 @@ PBF_PATH = RAW_VECTORS_DIR / "south-india-latest.osm.pbf"
 
 FOOTPRINTS_GEOJSON = PROCESSED_DIR / "footprints.geojson"
 FOOTPRINTS_CSV = PROCESSED_DIR / "footprints_summary.csv"
+
+PREVIEWS_DIR = PROCESSED_DIR / "previews"
