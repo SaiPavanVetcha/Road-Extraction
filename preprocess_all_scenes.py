@@ -15,26 +15,8 @@ PROCESSED_ROOT.mkdir(exist_ok=True)
 
 TARGET_RES = 24.0
 
-SCENE_IDS = [
-    "2025-11-17_Amaravati",
-    "2025-11-25_Amaravati",
-    "2025-12-09_Visakhapatnam",
-    "2025-12-11_Guntur",
-    "2025-12-11_Tirupathi_1",
-    "2025-12-11_Tirupathi_2",
-    "2025-12-14_Visakhapatnam",
-    "2025-12-16_Guntur",
-    "2026-01-21_Guntur",
-    "2026-02-28_Kurnool_1",
-    "2026-02-28_Kurnool_2",
-    "2026-03-19_Kurnool_1",
-    "2026-03-19_Kurnool_2",
-    "2026-04-22_Nellore",
-    "2026-05-30_Hyderabad",
-    "2026-06-11_Hyderabad",
-    "2026-09-15_Anantapur",
-    "2026-10-14_Warangal",
-]
+# Dynamically find all scene directories inside raw/optical
+SCENE_IDS = sorted([f.name for f in OPTICAL_ROOT.iterdir() if f.is_dir()])
 
 # ============================================================
 
