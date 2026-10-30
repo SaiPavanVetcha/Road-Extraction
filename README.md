@@ -293,4 +293,4 @@ python -m src.visualization.view_patches --split train --n 4
 
 - Optical data: [Bhoonidhi / NRSC / ISRO](https://bhoonidhi.nrsc.gov.in/)
 - SAR data: [ASF DAAC / NASA Earthdata](https://search.asf.alaska.edu/)
-- Vector data: [OpenStreetMap](https://www.openstreetmap.org/) via [Geofabrik](https://download.geofabrik.de/)
+- Vector data: [OpenStreetMap](https://www.openstreetmap.org/) via [Geofabrik](https://download.geofabrik.de/asia/india.html)
